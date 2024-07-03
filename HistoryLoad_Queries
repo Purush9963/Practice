@@ -1,0 +1,54 @@
+QUERIES for History Load
+================================
+
+path = "/mnt/edpitgidhinbound/hp-internal-file-drop-secured/datainbound/bmdis/finance_bm/data/app_treasurydashboard/"
+def file_exists(path):
+    try:
+        dbutils.fs.ls(path)
+        return True
+    except Exception as e:
+        if 'java.io.FileNotFoundException' in str(e):
+            return False
+        else:
+            raise
+
+# COMMAND ----------
+
+mount_path = dbutils.fs.ls("/mnt/edpitgidhinbound/hp-internal-file-drop-secured/datainbound/bmdis/finance_bm/data/app_treasurydashboard/")
+mount_path_df = spark.createDataFrame(mount_path)
+lower_path = mount_path_df.select(lower(mount_path_df.name),mount_path_df.path).collect()
+lower_path = spark.createDataFrame(lower_path)
+lower_path= lower_path.withColumnRenamed("lower(name)","name")
+
+# COMMAND ----------
+
+lower_path.display()
+
+# COMMAND ----------
+
+# DBTITLE 1,fact_bm_money_market_collective_processing_history
+if file_exists("/mnt/edpitgidhinbound/hp-internal-file-drop-secured/datainbound/bmdis/finance_bm/data/app_treasurydashboard/") == True:
+    if lower_path.filter((lower_path.name).like('%money_market%')).count() != 0:
+        acc = lower_path.filter((lower_path.name).like('%money_market%')).select(max(lower_path.path)).collect()[0][0]
+        df_map = spark.read.format("com.crealytics.spark.excel").option("header", "true").option("inferSchema", "true").load(acc[5:])
+        df_map.createOrReplaceTempView('money_view')
+        spark.sql('''create or replace temp view money_market_view as select 6878 as Source_System_Identifier,'U' as Logical_Deletion_Indicator,current_timestamp as Insert_GMT_Timestamp,current_timestamp as Source_System_Extract_GMT_Timestamp,cast(concat(substring(current_timestamp,1,4),substring(current_timestamp,6,2),substring(current_timestamp,9,2),substring(current_timestamp,12,2),substring(current_timestamp,15,2),substring(current_timestamp,18,2)) as bigint) as Load_Job_Number, cast(current_timestamp as timestamp) as Source_System_Update_Timestamp,cast(RunDate as date) as run_date,Maturity,Amount,cast(concat(substring(string(current_timestamp),1,4),substring(string(current_timestamp),6,2), substring(string(current_timestamp),9,2), substring(string(current_timestamp),12,2), substring(string(current_timestamp),15,2), substring(string(current_timestamp),18,2)) as BigInt) as Partition_Load_Job_Number from money_view''')
+        spark.sql('insert into dataengineering.finance_bm.lz_bm_money_market_transaction_history select * from money_market_view')
+        spark.sql('insert into dataengineering.app_treasury_dashboard.fact_bm_money_market_collective_processing_history select * from dataengineering.finance_bm.lz_bm_money_market_transaction_history')
+        print("Data inserted in dataengineering.app_treasury_dashboard.fact_bm_money_market_collective_processing_history successfuly")
+
+
+==================================================================================================================================================
+
+# COMMAND ----------
+
+# DBTITLE 1,dim_bm_electronic_bank_account_management_history
+if file_exists("/mnt/edpitgidhinbound/hp-internal-file-drop-secured/datainbound/bmdis/finance_bm/data/app_treasurydashboard/") == True:
+    if lower_path.filter((lower_path.name).like('%electronic_bank%')).count() != 0:
+        acc = lower_path.filter((lower_path.name).like('%electronic_bank%')).select(max(lower_path.path)).collect()[0][0]
+        df_map = spark.read.format("com.crealytics.spark.excel").option("header", "true").option("inferSchema", "true").load(acc[5:])
+        df_map.createOrReplaceTempView('electronic_view')
+        spark.sql('''create or replace temp view electronic_bank_view as select 6878 as Source_System_Identifier,'U' as Logical_Deletion_Indicator,current_timestamp as Insert_GMT_Timestamp,current_timestamp as Source_System_Extract_GMT_Timestamp,cast(concat(substring(current_timestamp,1,4),substring(current_timestamp,6,2),substring(current_timestamp,9,2),substring(current_timestamp,12,2),substring(current_timestamp,15,2),substring(current_timestamp,18,2)) as bigint) as Load_Job_Number, cast(current_timestamp as timestamp) as Source_System_Update_Timestamp,CalendarDateCode,CompanyCode,NoOfAccounts,cast(RunDate as date) as run_date,cast(concat(substring(string(current_timestamp),1,4),substring(string(current_timestamp),6,2), substring(string(current_timestamp),9,2), substring(string(current_timestamp),12,2), substring(string(current_timestamp),15,2), substring(string(current_timestamp),18,2)) as BigInt) as Partition_Load_Job_Number from electronic_view''')
+        spark.sql('insert into dataengineering.finance_bm.lz_bm_electronic_bank_account_history  select * from electronic_bank_view')
+        spark.sql('insert into dataengineering.app_treasury_dashboard.dim_bm_electronic_bank_account_management_history select * from dataengineering.finance_bm.lz_bm_electronic_bank_account_history')
+        print("Data inserted in dataengineering.app_treasury_dashboard.dim_bm_electronic_bank_account_management_history successfuly")
